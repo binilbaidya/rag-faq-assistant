@@ -4,7 +4,9 @@ A retrieval-augmented generation (RAG) chat API that answers questions **only fr
 
 Distilled from a production RAG assistant I designed and built over several months; this is a generic, open version of its FAQ engine.
 
-**Stack:** FastAPI · LangChain · Qdrant · MongoDB · any OpenAI-compatible LLM (OpenAI, or free Google Gemini) · Docker
+**Live demo:** open the chat button on [binilbaidya.com.np](https://www.binilbaidya.com.np) and ask about my work. It answers from [`data/faqs/about-binil.md`](data/faqs/about-binil.md).
+
+**Stack:** FastAPI · LangChain · Qdrant · MongoDB (optional) · any OpenAI-compatible LLM (OpenAI, or free Google Gemini) · Docker
 
 ## How it works
 
