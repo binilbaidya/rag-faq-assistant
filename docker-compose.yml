@@ -1,0 +1,51 @@
+services:
+  bot:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      MONGO_URI: mongodb://mongo:27017/faq_bot
+    volumes:
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+    depends_on:
+      qdrant:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    # Bound to localhost: no API key needed because nothing outside this machine can reach it.
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:8
+    # Bound to localhost for the same reason, so no root user/password is needed.
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    # Caps Mongo's cache so it fits next to the API on a small machine.
+    command: mongod --wiredTigerCacheSizeGB 0.5
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  qdrant_data:
+  mongo_data:
