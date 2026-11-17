@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import time
+from collections import deque
+from threading import Lock
+
+from fastapi import HTTPException, Request, status
+
+from app.auth import _bearer_token
+from app.config import get_settings
+
+
+class SlidingWindowLimiter:
+    """Per-process fixed-capacity sliding window.
+
+    Deliberately in-memory: with N workers the effective ceiling is N x the configured rate, which
+    is fine for shielding LLM spend but is not a security control. Move to Redis if it ever needs
+    to be exact across workers.
+    """
+
+    def __init__(self, limit: int, window_seconds: float) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = {}
+        self._lock = Lock()
+
+    def check(self, key: str) -> float | None:
+        """Returns None when allowed, else the seconds to wait before retrying."""
+        if self.limit <= 0:
+            return None
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            hits = self._hits.setdefault(key, deque())
+            while hits and hits[0] <= cutoff:
+                hits.popleft()
+            if len(hits) >= self.limit:
+                return max(0.0, hits[0] + self.window_seconds - now)
+            hits.append(now)
+            if len(self._hits) > 10_000:
+                self._prune(cutoff)
+        return None
+
+    def _prune(self, cutoff: float) -> None:
+        for key in [k for k, v in self._hits.items() if not v or v[-1] <= cutoff]:
+            self._hits.pop(key, None)
+
+
+_settings = get_settings()
+_chat_limiter = SlidingWindowLimiter(_settings.chat_rate_limit, _settings.chat_rate_window_seconds)
+
+
+def enforce_chat_rate_limit(request: Request) -> None:
+    retry_after = _chat_limiter.check(_client_key(request))
+    if retry_after is None:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Too many chat requests. Please wait a moment and try again.",
+        headers={"Retry-After": str(max(1, int(retry_after) + 1))},
+    )
+
+
+def _client_key(request: Request) -> str:
+    token = _bearer_token(request.headers.get("authorization"))
+    if token:
+        return f"t:{token[-32:]}"
+    # The hosting proxy appends the real client IP last; earlier entries are client-supplied.
+    forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
+    return f"ip:{forwarded[-1] if forwarded else (request.client.host if request.client else 'unknown')}"
