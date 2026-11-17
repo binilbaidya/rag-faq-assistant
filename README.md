@@ -22,9 +22,9 @@ Distilled from a production RAG assistant I designed and built over several mont
 - **Heading-aware chunking.** Each Markdown section becomes a chunk that carries its full heading path (`## Orders > Returns`), so a subsection still names its topic. Long sections are split with overlap.
 - **Hybrid scoring.** Cosine similarity is blended with a keyword score that ignores stopwords and plurals, so exact terms still rank well.
 - **Grounded answers.** Retrieved text is treated as untrusted data. The model matches on meaning, gives partial answers honestly, and falls back to a fixed reply when the context is about something else.
-- **Chat history.** Signed-in users (JWT) get conversations in MongoDB, auto-titled from the first message, with cursor-paged history. Anonymous visitors chat without history.
-- **AI on/off switch.** Admins can turn the assistant off at runtime (`PUT /v1/admin/ai`). The setting is stored in MongoDB and cached for 15s. `AI_FORCE_DISABLED` is a hard kill switch.
-- **Guardrails.** Obvious prompt-injection phrases are rejected before reaching the LLM, and a sliding-window rate limit (per token or per IP) protects the LLM quota.
+- **Chat history (optional).** With `MONGO_URI` set, signed-in users (JWT) get conversations in MongoDB, auto-titled from the first message, with cursor-paged history. Anonymous visitors, and everyone when MongoDB isn't configured, chat without history.
+- **AI on/off switch.** With MongoDB, admins can turn the assistant off at runtime (`PUT /v1/admin/ai`, cached for 15s). `AI_FORCE_DISABLED` works with or without MongoDB.
+- **Guardrails.** Obvious prompt-injection phrases are rejected before reaching the LLM. A per-client rate limit plus a site-wide daily cap protect the LLM quota.
 
 ## Run locally
 
@@ -68,12 +68,14 @@ Changing the embedding model changes `VECTOR_SIZE`, so re-ingest with `--recreat
 | `LLM_TIMEOUT_SECONDS` | `30` | Per-request limit for the LLM and embeddings (one retry) |
 | `QDRANT_COLLECTION` | `faqs` | Use one per project |
 | `STORE_ID` | `faq` | Knowledge-base namespace inside the collection |
+| `ASSISTANT_PERSONA` | `polite` | `polite`, `fun` or `professional` (add more in `PERSONAS` in `app/agents/faq_agent.py`); answer and safety rules always apply |
+| `NO_ANSWER_MESSAGE` | "I'm sorry, I don't have the answer…" | Exact reply when the FAQ doesn't cover a question |
 | `MONGO_DB` | `faq_bot` | Database the app uses (always wins over a name in `MONGO_URI`); use one per project |
-| `MONGO_HOST` / `MONGO_PORT` / `MONGO_USER` / `MONGO_PASSWORD` | `127.0.0.1` / `27017` / none | Alternative to `MONGO_URI` |
 | `MONGO_CHAT_COLLECTION` / `MONGO_CONVERSATIONS_COLLECTION` | `chat_messages` / `chat_conversations` | |
 | `AI_DEFAULT_ENABLED` | `true` | AI switch value before an admin sets it |
 | `AI_FORCE_DISABLED` | `false` | Hard kill switch, overrides the admin setting |
 | `CHAT_RATE_LIMIT` / `CHAT_RATE_WINDOW_SECONDS` | `20` / `60` | Questions per client per window |
+| `CHAT_DAILY_LIMIT` | `500` | Questions per day across all visitors; `0` turns it off |
 | `CORS_ALLOW_ALL` | `false` | Allow every origin |
 
 ## API
@@ -108,11 +110,11 @@ The tests run offline: in-memory Qdrant, deterministic fake embeddings, a fake L
 |---|---|
 | API | [Render](https://render.com) free web service from the `Dockerfile` (sleeps when idle; first request ~30s) |
 | Vector DB | [Qdrant Cloud](https://cloud.qdrant.io) free cluster → `QDRANT_URL`, `QDRANT_API_KEY` |
-| Chat history | [MongoDB Atlas](https://www.mongodb.com/atlas) free M0 cluster → `MONGO_URI` |
+| Chat history (optional) | [MongoDB Atlas](https://www.mongodb.com/atlas) free M0 cluster → `MONGO_URI`; skip it if visitors chat anonymously |
 | LLM | Gemini free tier (above) |
 | Website | Any static host (e.g. Netlify) calling the API |
 
-1. Create the Qdrant and Atlas clusters and a Render web service. Copy the variables from `.env.example` into Render, with `ENVIRONMENT=production` and `CORS_ALLOWED_ORIGINS=<your site URL>`.
+1. Create the Qdrant cluster (and Atlas, if you want history) and a Render web service. Copy the variables from `.env.example` into Render, with `ENVIRONMENT=production` and `CORS_ALLOWED_ORIGINS=<your site URL>`.
 2. Ingest once from your machine against the cloud Qdrant: `QDRANT_URL=… QDRANT_API_KEY=… python -m scripts.ingest_faq_files data/faqs --recreate`
 3. Add `examples/ChatWidget.tsx` to your Next.js site and set `NEXT_PUBLIC_CHAT_API_URL` to the Render URL.
 

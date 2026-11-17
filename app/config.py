@@ -75,6 +75,8 @@ class Settings:
     llm_timeout_seconds: float = field(default_factory=lambda: _number_env("LLM_TIMEOUT_SECONDS", 30.0, float))
     vector_size: int = field(default_factory=lambda: _number_env("VECTOR_SIZE", 1536, int))
     store_id: str = field(default_factory=lambda: _str_env("STORE_ID", "faq"))
+    # A persona name from faq_agent.PERSONAS (polite, fun, professional) or custom text; safety rules stay fixed.
+    assistant_persona: str = field(default_factory=lambda: _str_env("ASSISTANT_PERSONA", "polite"))
     # Exact reply when the FAQ has no answer; give it your own tone per deployment.
     no_answer_message: str = field(
         default_factory=lambda: _str_env("NO_ANSWER_MESSAGE", "I'm sorry, I don't have the answer to that question at the moment.")

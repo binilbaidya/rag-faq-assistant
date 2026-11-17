@@ -48,15 +48,20 @@ class SlidingWindowLimiter:
 
 _settings = get_settings()
 _chat_limiter = SlidingWindowLimiter(_settings.chat_rate_limit, _settings.chat_rate_window_seconds)
+_daily_limiter = SlidingWindowLimiter(_settings.chat_daily_limit, 24 * 60 * 60)
 
 
 def enforce_chat_rate_limit(request: Request) -> None:
-    retry_after = _chat_limiter.check(_client_key(request))
+    _enforce(_chat_limiter.check(_client_key(request)), "Too many chat requests. Please wait a moment and try again.")
+    _enforce(_daily_limiter.check("all"), "The assistant has reached today's question limit. Please try again tomorrow.")
+
+
+def _enforce(retry_after: float | None, detail: str) -> None:
     if retry_after is None:
         return
     raise HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail="Too many chat requests. Please wait a moment and try again.",
+        detail=detail,
         headers={"Retry-After": str(max(1, int(retry_after) + 1))},
     )
 
