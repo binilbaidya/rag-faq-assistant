@@ -7,12 +7,16 @@ from starlette.concurrency import run_in_threadpool
 from app.agents.faq_agent import FAQAgent, FAQRequest
 from app.agents.models import ChatStreamEvent, ChatTurnRequest, ChatTurnResult
 from app.auth import AuthenticatedUser
+from app.config import get_settings
 from app.database.ai_settings import AI_DISABLED_MESSAGE, AiSettingsService
 from app.database.chat_history import ChatHistoryService, ConversationIdRequired
 
 
 class ChatOrchestrator:
-    """One chat turn: AI switch check, history bookkeeping for signed-in users, then the FAQ answer."""
+    """One chat turn: AI switch check, history bookkeeping for signed-in users, then the FAQ answer.
+
+    chat_history is None when MongoDB isn't configured; every turn is then answered without history.
+    """
 
     def __init__(
         self,
@@ -21,7 +25,7 @@ class ChatOrchestrator:
         ai_settings: AiSettingsService | None = None,
     ) -> None:
         self.faq_agent = faq_agent or FAQAgent()
-        self.chat_history = chat_history or ChatHistoryService()
+        self.chat_history = chat_history
         self.ai_settings = ai_settings or AiSettingsService()
 
     async def run(
@@ -69,7 +73,7 @@ class ChatOrchestrator:
         request: ChatTurnRequest,
     ) -> tuple[str | None, str | None]:
         """Saves the user's message; returns the conversation id and its title when this turn set it."""
-        if user is None:
+        if user is None or self.chat_history is None:
             return None, None
 
         conversation_id = (request.conversation_id or "").strip()
@@ -120,7 +124,7 @@ class ChatOrchestrator:
         request: ChatTurnRequest,
     ) -> ChatTurnResult:
         conversation_id: str | None = None
-        if user is not None:
+        if user is not None and self.chat_history is not None:
             conversation_id = (request.conversation_id or "").strip() or None
             if conversation_id:
                 await run_in_threadpool(self.chat_history.require_owned, user.uuid, conversation_id)
@@ -142,7 +146,7 @@ class ChatOrchestrator:
 
 def require_conversation_id(user: AuthenticatedUser | None, conversation_id: str | None) -> None:
     """Shared so routes can pre-flight it — a stream cannot change status once it has begun."""
-    if user is not None and not (conversation_id or "").strip():
+    if user is not None and get_settings().mongo_uri and not (conversation_id or "").strip():
         raise ConversationIdRequired("conversation_id is required when authenticated.")
 
 

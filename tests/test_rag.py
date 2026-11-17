@@ -119,6 +119,13 @@ async def test_signed_in_turn_is_saved_to_history_with_a_title():
     assert result.conversation_title == "returns?"
 
 
+async def test_signed_in_turn_without_mongo_still_answers():
+    agent = FAQAgent(vector_store=_store(), llm=FakeListChatModel(responses=[ANSWER]))
+    orchestrator = ChatOrchestrator(faq_agent=agent, chat_history=None, ai_settings=StubAiSettings())
+    result = await orchestrator.run(AuthenticatedUser(uuid="u1"), ChatTurnRequest(message="returns?"))
+    assert result.message == ANSWER and result.conversation_id is None
+
+
 async def test_disabled_ai_short_circuits():
     result = await _orchestrator(ai_enabled=False).run(None, ChatTurnRequest(message="returns?"))
     assert result.message == AI_DISABLED_MESSAGE

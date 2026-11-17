@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from app.agents.faq_agent import FAQAgent
 from app.agents.orchestrator import ChatOrchestrator
+from app.config import get_settings
 from app.database.ai_settings import AiSettingsService
 from app.database.chat_history import ChatHistoryService
 from app.database.vector_store import FAQVectorStore
@@ -18,8 +19,8 @@ def get_faq_agent() -> FAQAgent:
 
 
 @lru_cache(maxsize=1)
-def get_chat_history() -> ChatHistoryService:
-    return ChatHistoryService()
+def get_chat_history() -> ChatHistoryService | None:
+    return ChatHistoryService() if get_settings().mongo_uri else None
 
 
 @lru_cache(maxsize=1)

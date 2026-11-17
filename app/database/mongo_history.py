@@ -15,7 +15,7 @@ MONGO_SOCKET_TIMEOUT_MS = 5000
 def get_mongo_client() -> MongoClient:
     settings = get_settings()
     return MongoClient(
-        settings.mongo_uri.strip(),
+        settings.mongo_uri,
         serverSelectionTimeoutMS=MONGO_TIMEOUT_MS,
         connectTimeoutMS=MONGO_TIMEOUT_MS,
         socketTimeoutMS=MONGO_SOCKET_TIMEOUT_MS,

@@ -13,7 +13,12 @@ from fastapi.responses import StreamingResponse
 from app.agents.models import ChatTurnRequest
 from app.agents.orchestrator import ChatOrchestrator, require_conversation_id
 from app.auth import AuthenticatedUser, get_current_user, get_optional_user
-from app.database.chat_history import ChatHistoryUnavailable, ConversationIdRequired, InvalidCursor
+from app.database.chat_history import (
+    ChatHistoryService,
+    ChatHistoryUnavailable,
+    ConversationIdRequired,
+    InvalidCursor,
+)
 from app.dependencies import get_chat_history, get_chat_orchestrator
 from app.rate_limit import enforce_chat_rate_limit
 from app.schemas.chat import (
@@ -36,7 +41,7 @@ def start_conversation(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConversationIdResponse:
     with _storage_errors():
-        return ConversationIdResponse(conversation_id=get_chat_history().new_conversation(user.uuid))
+        return ConversationIdResponse(conversation_id=_history().new_conversation(user.uuid))
 
 
 @router.get("/conversations", response_model=ConversationsResponse)
@@ -45,7 +50,7 @@ def list_conversations(
     limit: int = 50,
 ) -> ConversationsResponse:
     with _storage_errors():
-        return get_chat_history().list_conversations(user.uuid, limit=_clamp(limit, 1, 200))
+        return _history().list_conversations(user.uuid, limit=_clamp(limit, 1, 200))
 
 
 @router.get("/history", response_model=ChatHistoryResponse)
@@ -61,7 +66,7 @@ def chat_history(
 ) -> ChatHistoryResponse:
     try:
         with _storage_errors():
-            return get_chat_history().get_messages(
+            return _history().get_messages(
                 user.uuid,
                 conversation_id=conversation_id,
                 limit=_clamp(limit, 1, 200),
@@ -104,6 +109,13 @@ async def v1_chat_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _history() -> ChatHistoryService:
+    history = get_chat_history()
+    if history is None:
+        raise HTTPException(status_code=503, detail="Chat history is disabled. Set MONGO_URI to enable it.")
+    return history
 
 
 @contextmanager

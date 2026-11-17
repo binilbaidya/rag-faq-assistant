@@ -38,7 +38,7 @@ class AiStatusResponse(BaseModel):
 class AiSettingsService:
     def __init__(self) -> None:
         settings = get_settings()
-        self.collection = get_mongo_client()[settings.mongo_db]["ai_settings"]
+        self.collection = get_mongo_client()[settings.mongo_db]["ai_settings"] if settings.mongo_uri else None
         self._cached: dict[str, Any] | None = None
         self._cached_at = 0.0
 
@@ -63,6 +63,11 @@ class AiSettingsService:
         return bool(document.get("ai_enabled", settings.ai_default_enabled))
 
     def set_ai_enabled(self, *, ai_enabled: bool, updated_by: str) -> AiSettings:
+        if self.collection is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The runtime AI switch needs MongoDB (set MONGO_URI). Use AI_FORCE_DISABLED instead.",
+            )
         now = datetime.now(timezone.utc)
         payload: dict[str, Any] = {
             "_id": SETTINGS_DOCUMENT_ID,
@@ -86,6 +91,8 @@ class AiSettingsService:
 
     def _get_document(self) -> dict[str, Any] | None:
         now = time.monotonic()
+        if self.collection is None:
+            return None
         if self._cached is not None and now - self._cached_at < _CACHE_TTL_SECONDS:
             return self._cached
         try:
