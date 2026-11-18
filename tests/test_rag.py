@@ -111,6 +111,16 @@ async def test_empty_knowledge_base_returns_fallback():
     assert result.message == NO_CONTEXT_ANSWER
 
 
+async def test_small_talk_reaches_the_model_without_faq_matches(monkeypatch):
+    monkeypatch.setenv("ALLOW_SMALL_TALK", "true")
+    get_settings.cache_clear()
+    try:
+        result = await _orchestrator(ingest=False).run(None, ChatTurnRequest(message="Hi, how are you?"))
+    finally:
+        get_settings.cache_clear()
+    assert result.message == ANSWER
+
+
 async def test_signed_in_turn_is_saved_to_history_with_a_title():
     history = StubHistory()
     user = AuthenticatedUser(uuid="u1")

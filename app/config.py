@@ -81,6 +81,8 @@ class Settings:
     no_answer_message: str = field(
         default_factory=lambda: _str_env("NO_ANSWER_MESSAGE", "I'm sorry, I don't have the answer to that question at the moment.")
     )
+    # Lets the bot chat and joke a little beyond the FAQ (never inventing facts); off keeps it strictly grounded.
+    allow_small_talk: bool = field(default_factory=lambda: _bool_env("ALLOW_SMALL_TALK", default=False))
     cors_allow_all: bool = field(default_factory=lambda: _bool_env("CORS_ALLOW_ALL", default=False))
     cors_allowed_origins: tuple[str, ...] = field(default_factory=lambda: _csv_env("CORS_ALLOWED_ORIGINS"))
     chat_rate_limit: int = field(default_factory=lambda: _number_env("CHAT_RATE_LIMIT", 20, int))

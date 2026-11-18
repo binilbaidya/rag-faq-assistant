@@ -72,6 +72,7 @@ Changing the embedding model changes `VECTOR_SIZE`, so re-ingest with `--recreat
 | `STORE_ID` | `faq` | Knowledge-base namespace inside the collection |
 | `ASSISTANT_PERSONA` | `polite` | `polite`, `fun` or `professional` (add more in `PERSONAS` in `app/agents/faq_agent.py`); answer and safety rules always apply |
 | `NO_ANSWER_MESSAGE` | "I'm sorry, I don't have the answer…" | Exact reply when the FAQ doesn't cover a question |
+| `ALLOW_SMALL_TALK` | `false` | `true` lets the bot do brief small talk and jokes beyond the FAQ, still never inventing facts about you |
 | `MONGO_DB` | `faq_bot` | Database the app uses (always wins over a name in `MONGO_URI`); use one per project |
 | `MONGO_CHAT_COLLECTION` / `MONGO_CONVERSATIONS_COLLECTION` | `chat_messages` / `chat_conversations` | |
 | `AI_DEFAULT_ENABLED` | `true` | AI switch value before an admin sets it |
