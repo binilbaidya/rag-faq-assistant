@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from fastapi.responses import StreamingResponse
 
@@ -20,12 +20,14 @@ from app.database.chat_history import (
     InvalidCursor,
 )
 from app.dependencies import get_chat_history, get_chat_orchestrator
-from app.rate_limit import enforce_chat_rate_limit
+from app.config import get_settings
+from app.rate_limit import client_ip, enforce_chat_rate_limit, enforce_client_rate_limit
 from app.schemas.chat import (
     ChatHistoryResponse,
     ConversationIdResponse,
     ConversationsResponse,
     V1ChatRequest,
+    VisitorDetails,
     V1ChatResponse,
 )
 from app.security import check_request
@@ -79,6 +81,7 @@ def chat_history(
 @router.post("", response_model=V1ChatResponse, dependencies=[Depends(enforce_chat_rate_limit)])
 async def v1_chat(
     payload: V1ChatRequest,
+    request: Request,
     user: AuthenticatedUser | None = Depends(get_optional_user),
     orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
 ) -> V1ChatResponse:
@@ -86,7 +89,7 @@ async def v1_chat(
     try:
         require_conversation_id(user, payload.conversation_id)
         with _storage_errors():
-            result = await orchestrator.run(user, _to_turn_request(payload))
+            result = await orchestrator.run(user, _to_turn_request(payload, request))
     except LookupError as exc:
         raise _lookup_http_error(exc) from exc
     # Built from the model dump so a new ChatTurnResult field cannot be silently dropped.
@@ -96,6 +99,7 @@ async def v1_chat(
 @router.post("/stream", dependencies=[Depends(enforce_chat_rate_limit)])
 async def v1_chat_stream(
     payload: V1ChatRequest,
+    request: Request,
     user: AuthenticatedUser | None = Depends(get_optional_user),
     orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
 ) -> StreamingResponse:
@@ -105,10 +109,22 @@ async def v1_chat_stream(
     except LookupError as exc:
         raise _lookup_http_error(exc) from exc
     return StreamingResponse(
-        _sse_from_orchestrator(orchestrator, user, _to_turn_request(payload)),
+        _sse_from_orchestrator(orchestrator, user, _to_turn_request(payload, request)),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/visitor", status_code=204, dependencies=[Depends(enforce_client_rate_limit)])
+def save_visitor_details(payload: VisitorDetails) -> Response:
+    """Name and email a visitor chose to share, linked to their chats by visitor_id."""
+    check_request(payload)
+    history = get_chat_history()
+    if history is None or not get_settings().log_anonymous_chats:
+        raise HTTPException(status_code=404, detail="Visitor details are not being collected.")
+    with _storage_errors():
+        history.identify_visitor(payload.visitor_id, payload.name, payload.email)
+    return Response(status_code=204)
 
 
 def _history() -> ChatHistoryService:
@@ -126,10 +142,12 @@ def _storage_errors() -> Iterator[None]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-def _to_turn_request(payload: V1ChatRequest) -> ChatTurnRequest:
+def _to_turn_request(payload: V1ChatRequest, request: Request) -> ChatTurnRequest:
     return ChatTurnRequest(
         message=payload.message,
         history=payload.history,
+        visitor_id=(payload.visitor_id or "").strip() or None,
+        client_ip=client_ip(request),
         conversation_id=(payload.conversation_id or "").strip() or None,
     )
 

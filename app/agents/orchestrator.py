@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import uuid
 from collections.abc import AsyncIterator
 
 from starlette.concurrency import run_in_threadpool
@@ -9,7 +11,15 @@ from app.agents.models import ChatStreamEvent, ChatTurnRequest, ChatTurnResult
 from app.auth import AuthenticatedUser
 from app.config import get_settings
 from app.database.ai_settings import AI_DISABLED_MESSAGE, AiSettingsService
-from app.database.chat_history import ChatHistoryService, ConversationIdRequired
+from app.database.chat_history import ChatHistoryService, ChatHistoryUnavailable, ConversationIdRequired
+
+
+logger = logging.getLogger(__name__)
+
+# user_uuid on visitors' rows: "visitor:<id>" links to chat_visitors, "anonymous" when no id was sent.
+# The prefix keeps a client-chosen id from ever matching a signed-in user's uuid.
+ANONYMOUS_USER = "anonymous"
+VISITOR_PREFIX = "visitor:"
 
 
 class ChatOrchestrator:
@@ -39,6 +49,7 @@ class ChatOrchestrator:
         conversation_id, conversation_title = await self._begin(user, request)
         answer = await self.faq_agent.answer(FAQRequest(question=request.message, history=request.history))
         result = ChatTurnResult(message=answer.answer, conversation_id=conversation_id, sources=answer.sources)
+        await self._log_anonymous(user, request, result.message)
         return await self._finish(user, conversation_id, result, conversation_title)
 
     async def stream(
@@ -64,6 +75,7 @@ class ChatOrchestrator:
             conversation_id=conversation_id,
             sources=self.faq_agent.sources(results),
         )
+        await self._log_anonymous(user, request, result.message)
         result = await self._finish(user, conversation_id, result, conversation_title)
         yield _done_event(result)
 
@@ -87,6 +99,21 @@ class ChatOrchestrator:
             conversation_id=conversation_id,
         )
         return conversation_id, conversation_title
+
+    async def _log_anonymous(self, user: AuthenticatedUser | None, request: ChatTurnRequest, answer: str) -> None:
+        """Saves a visitor's turn for the owner to read; a Mongo failure must not break the chat."""
+        if user is not None or self.chat_history is None or not get_settings().log_anonymous_chats:
+            return
+        # The client's per-tab id groups one visitor's chat; without it each turn stands alone.
+        conversation_id = request.conversation_id or str(uuid.uuid4())
+        owner = f"{VISITOR_PREFIX}{request.visitor_id}" if request.visitor_id else ANONYMOUS_USER
+        try:
+            for role, text in (("user", request.message), ("assistant", answer)):
+                await run_in_threadpool(self.chat_history.save_message, owner, role, text, conversation_id=conversation_id)
+            if request.visitor_id:
+                await run_in_threadpool(self.chat_history.touch_visitor, request.visitor_id, request.client_ip)
+        except ChatHistoryUnavailable:
+            logger.warning("Could not save anonymous chat turn")
 
     async def _finish(
         self,

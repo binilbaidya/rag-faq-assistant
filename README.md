@@ -24,7 +24,7 @@ Distilled from a production RAG assistant I designed and built over several mont
 - **Heading-aware chunking.** Each Markdown section becomes a chunk that carries its full heading path (`## Orders > Returns`), so a subsection still names its topic. Long sections are split with overlap.
 - **Hybrid scoring.** Cosine similarity is blended with a keyword score that ignores stopwords and plurals, so exact terms still rank well.
 - **Grounded answers.** Retrieved text is treated as untrusted data. The model matches on meaning, gives partial answers honestly, and falls back to a fixed reply when the context is about something else.
-- **Chat history (optional).** With `MONGO_URI` set, signed-in users (JWT) get conversations in MongoDB, auto-titled from the first message, with cursor-paged history. Anonymous visitors, and everyone when MongoDB isn't configured, chat without history.
+- **Chat history (optional).** With `MONGO_URI` set, signed-in users (JWT) get conversations in MongoDB, auto-titled from the first message, with cursor-paged history. Anonymous visitors, and everyone when MongoDB isn't configured, chat without history; set `LOG_ANONYMOUS_CHATS=true` to save visitors' chats too. Each browser sends a `visitor_id`: its messages are saved with `user_uuid: "visitor:<id>"`, and `chat_visitors` holds that browser's IP, rough location (looked up on [ipwho.is](https://ipwho.is), so the IP is shared with it) and, once the visitor shares them via `POST /v1/chat/visitor`, name and email. One email across several browsers links them to one person.
 - **AI on/off switch.** With MongoDB, admins can turn the assistant off at runtime (`PUT /v1/admin/ai`, cached for 15s). `AI_FORCE_DISABLED` works with or without MongoDB.
 - **Guardrails.** Obvious prompt-injection phrases are rejected before reaching the LLM. A per-client rate limit plus a site-wide daily cap protect the LLM quota.
 
@@ -72,6 +72,7 @@ Changing the embedding model changes `VECTOR_SIZE`, so re-ingest with `--recreat
 | `STORE_ID` | `faq` | Knowledge-base namespace inside the collection |
 | `ASSISTANT_PERSONA` | `polite` | `polite`, `fun` or `professional` (add more in `PERSONAS` in `app/agents/faq_agent.py`); answer and safety rules always apply |
 | `NO_ANSWER_MESSAGE` | "I'm sorry, I don't have the answer…" | Exact reply when the FAQ doesn't cover a question |
+| `LOG_ANONYMOUS_CHATS` | `false` | With `MONGO_URI`, saves visitors' chats, IP, rough location and any name/email they share; tell visitors you do |
 | `ALLOW_SMALL_TALK` | `false` | `true` lets the bot do brief small talk and jokes beyond the FAQ, still never inventing facts about you |
 | `MONGO_DB` | `faq_bot` | Database the app uses (always wins over a name in `MONGO_URI`); use one per project |
 | `MONGO_CHAT_COLLECTION` / `MONGO_CONVERSATIONS_COLLECTION` | `chat_messages` / `chat_conversations` | |
@@ -85,11 +86,12 @@ Changing the embedding model changes `VECTOR_SIZE`, so re-ingest with `--recreat
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/v1/chat` | optional JWT | `{"message", "conversation_id"?}` → answer + sources |
+| `POST` | `/v1/chat` | optional JWT | `{"message", "conversation_id"?, "history"?, "visitor_id"?}` → answer + sources |
 | `POST` | `/v1/chat/stream` | optional JWT | Same, as SSE: `token` events, then `done` with sources and title |
 | `POST` | `/v1/chat/conversations` | JWT | Start (or reuse an empty) conversation |
 | `GET` | `/v1/chat/conversations` | JWT | List titled conversations, newest first |
 | `GET` | `/v1/chat/history?conversation_id=…&before=…` | JWT | Cursor-paged messages |
+| `POST` | `/v1/chat/visitor` | none | `{"visitor_id", "name", "email"}` a visitor chose to share (needs `LOG_ANONYMOUS_CHATS`) |
 | `GET` / `PUT` | `/v1/admin/ai` | ADMIN | Read or set the AI on/off switch |
 | `POST` | `/v1/admin/faqs` | ADMIN | Upload `.md`/`.txt` files (multipart `files`) or JSON documents |
 | `GET` | `/v1/admin/faqs` | ADMIN | List ingested files and chunk counts |

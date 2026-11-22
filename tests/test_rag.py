@@ -34,6 +34,7 @@ ANSWER = "Returns are accepted within 30 days."
 class StubHistory:
     def __init__(self):
         self.saved = []
+        self.visitors = []
 
     def require_owned(self, user_uuid, conversation_id):
         pass
@@ -41,6 +42,9 @@ class StubHistory:
     def save_message(self, user_uuid, role, message, *, conversation_id, sources=None, metadata=None):
         self.saved.append((role, message))
         return message if role == "user" and len(self.saved) == 1 else None
+
+    def touch_visitor(self, visitor_id, ip):
+        self.visitors.append((visitor_id, ip))
 
 
 class StubAiSettings:
@@ -128,6 +132,26 @@ async def test_small_talk_reaches_the_model_without_faq_matches(monkeypatch):
     finally:
         get_settings.cache_clear()
     assert result.message == ANSWER
+
+
+async def test_anonymous_turn_is_logged_when_enabled(monkeypatch):
+    monkeypatch.setenv("LOG_ANONYMOUS_CHATS", "true")
+    get_settings.cache_clear()
+    history = StubHistory()
+    try:
+        turn = ChatTurnRequest(message="Do you ship?", conversation_id="tab-1", visitor_id="v1", client_ip="1.2.3.4")
+        await _orchestrator(history=history).run(None, turn)
+    finally:
+        get_settings.cache_clear()
+    assert history.saved == [("user", "Do you ship?"), ("assistant", ANSWER)]
+    assert history.visitors == [("v1", "1.2.3.4")]
+
+
+def test_visitor_details_rejected_when_not_collecting():
+    response = TestClient(app).post("/v1/chat/visitor", json={"visitor_id": "v1", "name": "Sam", "email": "sam@example.com"})
+    assert response.status_code == 404
+    bad = TestClient(app).post("/v1/chat/visitor", json={"visitor_id": "v1", "name": "Sam", "email": "not-an-email"})
+    assert bad.status_code == 422
 
 
 async def test_signed_in_turn_is_saved_to_history_with_a_title():

@@ -51,8 +51,12 @@ _chat_limiter = SlidingWindowLimiter(_settings.chat_rate_limit, _settings.chat_r
 _daily_limiter = SlidingWindowLimiter(_settings.chat_daily_limit, 24 * 60 * 60)
 
 
-def enforce_chat_rate_limit(request: Request) -> None:
+def enforce_client_rate_limit(request: Request) -> None:
     _enforce(_chat_limiter.check(_client_key(request)), "Too many chat requests. Please wait a moment and try again.")
+
+
+def enforce_chat_rate_limit(request: Request) -> None:
+    enforce_client_rate_limit(request)
     _enforce(_daily_limiter.check("all"), "The assistant has reached today's question limit. Please try again tomorrow.")
 
 
@@ -70,6 +74,10 @@ def _client_key(request: Request) -> str:
     token = _bearer_token(request.headers.get("authorization"))
     if token:
         return f"t:{token[-32:]}"
+    return f"ip:{client_ip(request) or 'unknown'}"
+
+
+def client_ip(request: Request) -> str | None:
     # The hosting proxy appends the real client IP last; earlier entries are client-supplied.
     forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
-    return f"ip:{forwarded[-1] if forwarded else (request.client.host if request.client else 'unknown')}"
+    return forwarded[-1] if forwarded else (request.client.host if request.client else None)

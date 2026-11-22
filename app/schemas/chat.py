@@ -16,10 +16,17 @@ class V1ChatRequest(BaseModel):
     conversation_id: str | None = Field(
         default=None,
         max_length=128,
-        description="Required when authenticated. Omit for anonymous chat (no history).",
+        description="Required when authenticated. Anonymous clients may send a per-tab id to group logged chats.",
     )
     # Sent by the client so follow-ups work without a database; untrusted like the message itself.
     history: list[HistoryTurn] = Field(default_factory=list, max_length=20, description="Last few turns, oldest first.")
+    visitor_id: str | None = Field(default=None, max_length=64, description="Anonymous per-browser id that links a visitor's chats.")
+
+
+class VisitorDetails(BaseModel):
+    visitor_id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=100)
+    email: str = Field(max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class V1ChatResponse(BaseModel):

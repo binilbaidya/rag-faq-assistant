@@ -13,6 +13,8 @@ class HistoryTurn(BaseModel):
 class ChatTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     history: list[HistoryTurn] = Field(default_factory=list, max_length=20)
+    visitor_id: str | None = Field(default=None, max_length=64)
+    client_ip: str | None = None
     conversation_id: str | None = Field(default=None, max_length=128)
 
 

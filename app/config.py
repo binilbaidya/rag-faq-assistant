@@ -81,6 +81,8 @@ class Settings:
     no_answer_message: str = field(
         default_factory=lambda: _str_env("NO_ANSWER_MESSAGE", "I'm sorry, I don't have the answer to that question at the moment.")
     )
+    # Saves anonymous visitors' chats to MongoDB (needs MONGO_URI) so the owner can read them; no IP is stored.
+    log_anonymous_chats: bool = field(default_factory=lambda: _bool_env("LOG_ANONYMOUS_CHATS", default=False))
     # Lets the bot chat and joke a little beyond the FAQ (never inventing facts); off keeps it strictly grounded.
     allow_small_talk: bool = field(default_factory=lambda: _bool_env("ALLOW_SMALL_TALK", default=False))
     cors_allow_all: bool = field(default_factory=lambda: _bool_env("CORS_ALLOW_ALL", default=False))

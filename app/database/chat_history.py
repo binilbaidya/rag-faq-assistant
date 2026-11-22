@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
+import urllib.parse
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -53,6 +56,8 @@ class ChatHistoryService:
         db = get_mongo_client()[settings.mongo_db]
         self.conversations = db[settings.mongo_conversations_collection]
         self.messages = db[settings.mongo_chat_collection]
+        # One row per anonymous browser: its IP, rough location, and name/email once shared.
+        self.visitors = db["chat_visitors"]
         self._ensure_indexes()
 
     def save_message(
@@ -95,6 +100,34 @@ class ChatHistoryService:
             logger.exception("Failed to save chat message for user %s", user_uuid)
             raise ChatHistoryUnavailable("Chat history is temporarily unavailable.") from exc
         return None
+
+    def touch_visitor(self, visitor_id: str, ip: str | None) -> None:
+        """Records a visit; the location lookup runs only when this visitor's IP is new."""
+        now = datetime.now(timezone.utc)
+        try:
+            before = self.visitors.find_one_and_update(
+                {"visitor_id": visitor_id},
+                {"$set": {"last_seen": now, "ip": ip}, "$setOnInsert": {"first_seen": now}},
+                upsert=True,
+            )
+            if ip and (before is None or before.get("ip") != ip):
+                self.visitors.update_one({"visitor_id": visitor_id}, {"$set": {"location": ip_location(ip)}})
+        except PyMongoError as exc:
+            logger.exception("Failed to record visitor %s", visitor_id)
+            raise ChatHistoryUnavailable("Chat history is temporarily unavailable.") from exc
+
+    def identify_visitor(self, visitor_id: str, name: str, email: str) -> None:
+        now = datetime.now(timezone.utc)
+        try:
+            self.visitors.update_one(
+                {"visitor_id": visitor_id},
+                {"$set": {"name": name.strip(), "email": email.strip().lower(), "identified_at": now},
+                 "$setOnInsert": {"first_seen": now}},
+                upsert=True,
+            )
+        except PyMongoError as exc:
+            logger.exception("Failed to save details for visitor %s", visitor_id)
+            raise ChatHistoryUnavailable("Chat history is temporarily unavailable.") from exc
 
     def set_title(self, user_uuid: str, conversation_id: str, title: str) -> str | None:
         text = " ".join(title.split()).strip("\"'`“”‘’")
@@ -278,8 +311,22 @@ class ChatHistoryService:
             self.conversations.create_index("conversation_id", unique=True)
             self.conversations.create_index([("user_uuid", 1), ("updated_at", -1)])
             self.messages.create_index([("user_uuid", 1), ("conversation_id", 1), ("timestamp", 1)])
+            self.visitors.create_index("visitor_id", unique=True)
+            self.visitors.create_index("email")
         except PyMongoError:
             logger.warning("Could not create chat history indexes", exc_info=True)
+
+
+def ip_location(ip: str) -> str | None:
+    """Rough "City, Region, Country" from a free lookup; None on any failure, since it's only nice-to-have."""
+    try:
+        with urllib.request.urlopen(f"https://ipwho.is/{urllib.parse.quote(ip)}", timeout=3) as response:
+            data = json.load(response)
+    except (OSError, ValueError):
+        return None
+    if not data.get("success"):
+        return None
+    return ", ".join(part for part in (data.get("city"), data.get("region"), data.get("country")) if part) or None
 
 
 def _encode_cursor(doc: dict[str, Any]) -> str:
