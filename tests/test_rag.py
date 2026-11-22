@@ -5,10 +5,11 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.runnables import RunnableLambda
 from qdrant_client import QdrantClient
 
 from app.agents.faq_agent import NO_CONTEXT_ANSWER, FAQAgent, FAQRequest
-from app.agents.models import ChatTurnRequest
+from app.agents.models import ChatTurnRequest, HistoryTurn
 from app.agents.orchestrator import ChatOrchestrator
 from app.auth import AuthenticatedUser
 from app.config import Settings, get_settings
@@ -104,6 +105,14 @@ async def test_answer_uses_retrieved_context_and_returns_sources():
     answer = await agent.answer(FAQRequest(question="Are returns accepted within 30 days?"))
     assert answer.answer == ANSWER
     assert answer.sources[0]["source"] == "faq.md"
+
+
+async def test_earlier_turns_reach_the_model():
+    seen = []
+    llm = RunnableLambda(lambda prompt: seen.extend(prompt.to_messages()) or ANSWER)
+    history = [HistoryTurn(role="user", text="Do you ship to Nepal?"), HistoryTurn(role="assistant", text="Yes.")]
+    await FAQAgent(vector_store=_store(), llm=llm).answer(FAQRequest(question="How long does it take?", history=history))
+    assert [m.content for m in seen[1:]] == ["Do you ship to Nepal?", "Yes.", "Question: How long does it take?"]
 
 
 async def test_empty_knowledge_base_returns_fallback():

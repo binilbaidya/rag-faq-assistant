@@ -37,7 +37,7 @@ class ChatOrchestrator:
             return await self._disabled_result(user, request)
 
         conversation_id, conversation_title = await self._begin(user, request)
-        answer = await self.faq_agent.answer(FAQRequest(question=request.message))
+        answer = await self.faq_agent.answer(FAQRequest(question=request.message, history=request.history))
         result = ChatTurnResult(message=answer.answer, conversation_id=conversation_id, sources=answer.sources)
         return await self._finish(user, conversation_id, result, conversation_title)
 
@@ -53,7 +53,7 @@ class ChatOrchestrator:
             return
 
         conversation_id, conversation_title = await self._begin(user, request)
-        faq_request = FAQRequest(question=request.message)
+        faq_request = FAQRequest(question=request.message, history=request.history)
         results = await run_in_threadpool(self.faq_agent.retrieve, faq_request)
         parts: list[str] = []
         async for chunk in self.faq_agent.stream_answer(faq_request, results):

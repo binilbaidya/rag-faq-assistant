@@ -129,6 +129,7 @@ def _storage_errors() -> Iterator[None]:
 def _to_turn_request(payload: V1ChatRequest) -> ChatTurnRequest:
     return ChatTurnRequest(
         message=payload.message,
+        history=payload.history,
         conversation_id=(payload.conversation_id or "").strip() or None,
     )
 

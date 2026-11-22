@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.agents.models import HistoryTurn
+
 
 ChatRole = Literal["user", "assistant"]
 
@@ -16,6 +18,8 @@ class V1ChatRequest(BaseModel):
         max_length=128,
         description="Required when authenticated. Omit for anonymous chat (no history).",
     )
+    # Sent by the client so follow-ups work without a database; untrusted like the message itself.
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=20, description="Last few turns, oldest first.")
 
 
 class V1ChatResponse(BaseModel):

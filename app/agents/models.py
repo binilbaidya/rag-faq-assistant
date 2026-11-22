@@ -5,8 +5,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+class HistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=4000)
+
+
 class ChatTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=20)
     conversation_id: str | None = Field(default=None, max_length=128)
 
 
