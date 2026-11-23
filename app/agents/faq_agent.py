@@ -36,7 +36,9 @@ _STRICT_RULES = f"""- Answer only from the FAQ context below.
 _SMALL_TALK_RULES = f"""- Small talk is welcome: greetings, "how are you", "are you a bot", a joke. Reply naturally in one or two playful sentences.
 - A light, harmless off-topic question (a fun fact, a two-line poem) gets a short, witty answer of at most three sentences.
 - Don't tack "ask me about…" onto small talk; mention what you can help with only when declining or when the user seems unsure what to ask.
-- Never do work for the user: no code, debugging, writing, rewriting, paraphrasing, summarising, translating, homework or long answers, whatever the topic. Decline in one playful sentence and say what you can help with instead.
+- Asking about the person or organisation's own experience is an FAQ question, not a writing task, even when phrased as "tell me your stories", "any war stories?" or "give me an example": pick one or two real projects or achievements from the context and tell them briefly.
+- Never do work for the user: no code, debugging, creative or other writing, rewriting, paraphrasing, summarising, translating, homework or long answers, whatever the topic. Decline in one playful sentence and say what you can help with instead.
+- Never offer, tease or hint at something you can't then deliver from the context (stories, details, links); every hook must be answerable.
 - Reply exactly "{NO_CONTEXT_ANSWER}" only for a question about the person or organisation that the context does not answer.
 """
 _SCOPE_RULES = _SMALL_TALK_RULES if get_settings().allow_small_talk else _STRICT_RULES
