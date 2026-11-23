@@ -147,6 +147,33 @@ async def test_anonymous_turn_is_logged_when_enabled(monkeypatch):
     assert history.visitors == [("v1", "1.2.3.4")]
 
 
+def test_client_ip_skips_private_proxy_hops_and_spoofed_left_entries():
+    from starlette.requests import Request
+    from app.rate_limit import client_ip
+
+    def ip(forwarded):
+        return client_ip(Request({"type": "http", "headers": [(b"x-forwarded-for", forwarded.encode())], "client": ("10.0.0.1", 1)}))
+
+    assert ip("1.1.1.1, 10.27.115.103") == "1.1.1.1"
+    assert ip("9.9.9.9, 1.1.1.1, 10.27.115.103") == "1.1.1.1"
+    assert ip("10.27.115.103") == "10.0.0.1"
+
+
+def test_client_ip_header_setting_switches_the_source(monkeypatch):
+    from starlette.requests import Request
+    from app.rate_limit import client_ip
+
+    headers = [(b"x-forwarded-for", b"1.1.1.1"), (b"cf-connecting-ip", b"8.8.8.8")]
+    request = Request({"type": "http", "headers": headers, "client": ("203.0.113.9", 1)})
+    try:
+        for setting, expected in (("none", "203.0.113.9"), ("CF-Connecting-IP", "8.8.8.8")):
+            monkeypatch.setenv("CLIENT_IP_HEADER", setting)
+            get_settings.cache_clear()
+            assert client_ip(request) == expected
+    finally:
+        get_settings.cache_clear()
+
+
 def test_visitor_details_rejected_when_not_collecting():
     response = TestClient(app).post("/v1/chat/visitor", json={"visitor_id": "v1", "name": "Sam", "email": "sam@example.com"})
     assert response.status_code == 404

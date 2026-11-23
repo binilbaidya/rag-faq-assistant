@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+import logging
 import time
 from collections import deque
 from threading import Lock
@@ -8,6 +10,9 @@ from fastapi import HTTPException, Request, status
 
 from app.auth import _bearer_token
 from app.config import get_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class SlidingWindowLimiter:
@@ -78,6 +83,24 @@ def _client_key(request: Request) -> str:
 
 
 def client_ip(request: Request) -> str | None:
-    # The hosting proxy appends the real client IP last; earlier entries are client-supplied.
+    """The visitor's IP, read the way CLIENT_IP_HEADER says this deployment's proxies pass it on."""
+    direct = request.client.host if request.client else None
+    header = get_settings().client_ip_header
+    if header == "none":
+        # No proxy in front: any forwarding header came from the client itself, so ignore them.
+        return direct
+    if header != "x-forwarded-for":
+        # A CDN's own header (e.g. CF-Connecting-IP) holds the single IP the CDN saw; it overwrites any client value.
+        return request.headers.get(header, "").split(",")[0].strip() or direct
+    # Proxies append to X-Forwarded-For, so the left end is client-supplied. Walking from the right,
+    # the host's own private hops (e.g. a 10.x load balancer) are skipped; the first public IP is the visitor.
     forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
-    return forwarded[-1] if forwarded else (request.client.host if request.client else None)
+    for candidate in reversed(forwarded):
+        try:
+            if ipaddress.ip_address(candidate).is_global:
+                return candidate
+        except ValueError:
+            continue
+    if forwarded:
+        logger.warning("No public IP in X-Forwarded-For: %s", forwarded)
+    return direct

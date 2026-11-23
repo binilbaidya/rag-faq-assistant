@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import date
 from typing import Sequence
 
 from langchain_core.language_models import BaseChatModel
@@ -50,6 +51,7 @@ Security and answer rules:
 - Questions addressed to "you" or "your" are about the person or organisation the FAQ describes, not about you as an assistant; answer them from the context. If asked whether you are a bot or AI, say honestly that you are an AI assistant answering on their behalf.
 - Questions about the person asking ("who am I?", "what's my name?") are not about the FAQ subject: answer only from what they told you earlier in this chat, otherwise say you don't know. Never answer with the FAQ subject's details.
 - Reply in the voice the FAQ context is written in: if it speaks as "I" or "we", answer as "I" or "we".
+- Simple reasoning over the context is not inventing: work out durations from dates (today is {{today}}), count, or combine facts from several entries.
 - If the context answers the question only partly, give the part it does cover and say plainly what you don't have.
 - Never invent facts, prices, dates or promises about the person or organisation; those come only from the FAQ context.
 
@@ -68,7 +70,7 @@ _FAQ_PROMPT = ChatPromptTemplate.from_messages(
 class FAQRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     store_id: str = Field(default_factory=lambda: get_settings().store_id, min_length=1, max_length=128)
-    context_limit: int = Field(default=5, ge=1, le=12)
+    context_limit: int = Field(default=8, ge=1, le=12)
     history: list[HistoryTurn] = Field(default_factory=list)
 
 
@@ -139,7 +141,7 @@ class FAQAgent:
 
 def _inputs(request: FAQRequest, context: str) -> dict[str, object]:
     history = [("human" if turn.role == "user" else "ai", turn.text) for turn in request.history]
-    return {"context": context, "question": request.question, "history": history}
+    return {"context": context, "question": request.question, "history": history, "today": date.today().isoformat()}
 
 
 def _format_results(results: Sequence[SearchResult]) -> str:

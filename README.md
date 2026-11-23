@@ -79,8 +79,21 @@ Changing the embedding model changes `VECTOR_SIZE`, so re-ingest with `--recreat
 | `AI_DEFAULT_ENABLED` | `true` | AI switch value before an admin sets it |
 | `AI_FORCE_DISABLED` | `false` | Hard kill switch, overrides the admin setting |
 | `CHAT_RATE_LIMIT` / `CHAT_RATE_WINDOW_SECONDS` | `20` / `60` | Questions per client per window |
+| `CLIENT_IP_HEADER` | `x-forwarded-for` | Where the visitor's IP comes from, for rate limits and visitor logs; see [Client IP behind proxies](#client-ip-behind-proxies) |
 | `CHAT_DAILY_LIMIT` | `500` | Questions per day across all visitors; `0` turns it off |
 | `CORS_ALLOW_ALL` | `false` | Allow every origin |
+
+## Client IP behind proxies
+
+Rate limits and visitor logs need the visitor's real IP, and how a host passes it on varies. Set `CLIENT_IP_HEADER` to match yours:
+
+| Setup | `CLIENT_IP_HEADER` | What it reads |
+|---|---|---|
+| One load balancer or reverse proxy (AWS ALB, Nginx, Caddy) | `x-forwarded-for` (default) | The rightmost public IP in `X-Forwarded-For`; private proxy hops are skipped and left-hand, client-supplied entries are ignored |
+| A CDN in front, including **Render**, which runs behind Cloudflare | The CDN's header, e.g. `cf-connecting-ip` | That header, which the CDN sets itself |
+| Exposed directly with no proxy (e.g. `docker compose` on a public server) | `none` | The direct connection; forwarding headers are ignored because a client could fake them |
+
+With the default, a CDN in front of another proxy makes the CDN's IP look like the visitor's, and running with no proxy lets clients fake their IP to dodge the per-visitor rate limit (the daily cap still holds). If the IP looks wrong, the log line `No public IP in X-Forwarded-For` shows what the host sent.
 
 ## API
 
@@ -119,7 +132,7 @@ The tests run offline: in-memory Qdrant, deterministic fake embeddings, a fake L
 | LLM | Gemini free tier (above) |
 | Website | Any static host (e.g. Netlify) calling the API |
 
-1. Create the Qdrant cluster (and Atlas, if you want history) and a Render web service. Copy the variables from `.env.example` into Render, with `ENVIRONMENT=production` and `CORS_ALLOWED_ORIGINS=<your site URL>`.
+1. Create the Qdrant cluster (and Atlas, if you want history) and a Render web service. Copy the variables from `.env.example` into Render, with `ENVIRONMENT=production`, `CORS_ALLOWED_ORIGINS=<your site URL>` and `CLIENT_IP_HEADER=cf-connecting-ip` (Render sits behind Cloudflare).
 2. Ingest once from your machine against the cloud Qdrant: `QDRANT_URL=… QDRANT_API_KEY=… python -m scripts.ingest_faq_files data/faqs --recreate`
 3. Add `examples/ChatWidget.tsx` to your Next.js site and set `NEXT_PUBLIC_CHAT_API_URL` to the Render URL.
 

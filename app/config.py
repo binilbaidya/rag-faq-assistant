@@ -87,6 +87,8 @@ class Settings:
     allow_small_talk: bool = field(default_factory=lambda: _bool_env("ALLOW_SMALL_TALK", default=False))
     cors_allow_all: bool = field(default_factory=lambda: _bool_env("CORS_ALLOW_ALL", default=False))
     cors_allowed_origins: tuple[str, ...] = field(default_factory=lambda: _csv_env("CORS_ALLOWED_ORIGINS"))
+    # Where the visitor's IP comes from: "x-forwarded-for", a CDN header such as "cf-connecting-ip", or "none" (direct connection).
+    client_ip_header: str = field(default_factory=lambda: _str_env("CLIENT_IP_HEADER", "x-forwarded-for").lower())
     chat_rate_limit: int = field(default_factory=lambda: _number_env("CHAT_RATE_LIMIT", 20, int))
     chat_rate_window_seconds: float = field(default_factory=lambda: _number_env("CHAT_RATE_WINDOW_SECONDS", 60.0, float))
     # Site-wide cap across all visitors, so many IPs can't drain a free LLM quota.
